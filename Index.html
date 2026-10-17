@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b16">
+  <title>MAG 3 PRO — AI Assistant</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #080b16; color: #f5f7ff;
+      font-family: system-ui, Arial, sans-serif;
+    }
+    header {
+      padding: 17px; display: flex; justify-content: space-between;
+      align-items: center; border-bottom: 1px solid #252b40;
+      position: sticky; top: 0; background: #0b1020;
+    }
+    .brand { font-size: 21px; font-weight: 800; color: #a78bfa; }
+    .status { font-size: 12px; color: #6ee7b7; }
+    main { max-width: 760px; margin: auto; padding: 20px 14px 150px; }
+    .welcome { text-align: center; padding: 35px 5px 25px; }
+    .orb {
+      width: 76px; height: 76px; margin: auto auto 15px;
+      border-radius: 25px; display: grid; place-items: center;
+      font-size: 32px; background: linear-gradient(135deg,#7c3aed,#06b6d4);
+      box-shadow: 0 0 35px #7c3aed45;
+    }
+    h1 { font-size: 29px; margin: 8px 0; }
+    .muted { color: #9ca8c5; line-height: 1.6; }
+    .suggestions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .suggestions button {
+      background: #11182b; color: #dce4ff; border: 1px solid #29334e;
+      border-radius: 13px; padding: 14px 10px; text-align: left;
+    }
+    #messages { display: flex; flex-direction: column; gap: 15px; }
+    .message {
+      padding: 13px 15px; border-radius: 17px; max-width: 90%;
+      white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55;
+    }
+    .user { align-self: flex-end; background: #5935b5; }
+    .bot { align-self: flex-start; background: #151c30; border: 1px solid #27314b; }
+    .composer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent,#080b16 20%);
+      padding: 20px 12px max(15px,env(safe-area-inset-bottom));
+    }
+    .input-wrap {
+      max-width: 760px; margin: auto; padding: 9px;
+      background: #131a2c; border: 1px solid #303a55;
+      border-radius: 20px; display: flex; align-items: flex-end; gap: 7px;
+    }
+    textarea {
+      min-width: 0; flex: 1; resize: none; max-height: 120px;
+      background: transparent; border: 0; outline: 0;
+      color: white; padding: 10px 5px; font: inherit;
+    }
+    .action {
+      border: 0; border-radius: 12px; padding: 11px;
+      background: #242e47; color: white; font-size: 17px;
+    }
+    .send { background: #8b5cf6; }
+    .tools {
+      display: flex; gap: 8px; max-width: 760px; margin: 10px auto 0;
+    }
+    .tools button { font-size: 12px; padding: 9px 11px; }
+    #photo { display: none; }
+    #preview { display: none; max-width: 130px; max-height: 100px; border-radius: 10px; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .5; cursor: wait; }
+    @media(max-width:420px) {
+      h1 { font-size: 25px; }
+      .suggestions button { font-size: 12px; }
+      .tools { gap: 5px; }
+      .tools button { padding: 9px 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">✦ MAG 3 PRO</div>
+    <div class="status">● AI ASSISTANT</div>
+  </header>
+
+  <main>
+    <section class="welcome" id="welcome">
+      <div class="orb">✦</div>
+      <h1>Your AI. Your world.</h1>
+      <p class="muted">Chat, ask questions, explore ideas and create something amazing.</p>
+    </section>
+
+    <section class="suggestions" id="suggestions">
+      <button onclick="suggest('Teach me something interesting today')">💡 Learn something</button>
+      <button onclick="suggest('Help me write a website')">💻 Build a website</button>
+      <button onclick="suggest('Give me a creative image idea')">🎨 Image ideas</button>
+      <button onclick="suggest('Let us have an interesting conversation')">💬 Let's talk</button>
+    </section>
+
+    <section id="messages" aria-live="polite"></section>
+  </main>
+
+  <section class="composer">
+    <div class="input-wrap">
+      <textarea id="prompt" rows="1" placeholder="Message MAG 3 PRO..."
+        aria-label="Your message"></textarea>
+      <button class="action" onclick="choosePhoto()" title="Add a photo">📷</button>
+      <button class="action send" id="send" onclick="sendMessage()" title="Send">➤</button>
+    </div>
+    <div class="tools">
+      <button class="action" onclick="toggleVoice()" id="voice">🔊 Voice on</button>
+      <button class="action" onclick="startListening()">🎙️ Speak</button>
+      <button class="action" onclick="generateImage()">🎨 Create image</button>
+      <input id="photo" type="file" accept="image/*" capture="environment"
+        onchange="attachPhoto(event)">
+    </div>
+    <div style="max-width:760px;margin:8px auto;display:flex;gap:8px;align-items:center">
+      <img id="preview" alt="Selected photo preview">
+      <span id="photoStatus" class="muted" style="font-size:12px"></span>
+    </div>
+  </section>
+
+<script>
+  // The secure AI backend will be connected in the next step.
+  const API_ENDPOINT = "/api/chat";
+  let voiceEnabled = true;
+  let selectedPhoto = null;
+  let conversation = [];
+
+  const promptBox = document.getElementById("prompt");
+  const messages = document.getElementById("messages");
+
+  function addMessage(text, who) {
+    document.getElementById("welcome").style.display = "none";
+    document.getElementById("suggestions").style.display = "none";
+    const div = document.createElement("div");
+    div.className = "message " + who;
+    div.textContent = text;
+    messages.appendChild(div);
+    window.scrollTo({top: document.body.scrollHeight, behavior: "smooth"});
+    return div;
+  }
+
+  function suggest(text) {
+    promptBox.value = text;
+    sendMessage();
+  }
+
+  promptBox.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  function toggleVoice() {
+    voiceEnabled = !voiceEnabled;
+    document.getElementById("voice").textContent =
+      voiceEnabled ? "🔊 Voice on" : "🔇 Voice off";
+    if (!voiceEnabled && "speechSynthesis" in window) {
+      speechSynthesis.cancel();
+    }
+  }
+
+  function speak(text) {
+    if (!voiceEnabled || !("speechSynthesis" in window)) return;
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    speechSynthesis.speak(utterance);
+  }
+
+  function startListening() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice input may not be supported in this browser. Try Chrome.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-NG";
+    recognition.onresult = e => {
+      promptBox.value = e.results[0][0].transcript;
+      sendMessage();
+    };
+    recognition.onerror = () => alert("Microphone unavailable. Check browser permission.");
+    recognition.start();
+  }
+
+  function choosePhoto() {
+    document.getElementById("photo").click();
+  }
+
+  function attachPhoto(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      alert("Please choose a photo smaller than 8 MB.");
+      event.target.value = "";
+      return;
+    }
+    selectedPhoto = file;
+    document.getElementById("preview").src = URL.createObjectURL(file);
+    document.getElementById("preview").style.display = "block";
+    document.getElementById("photoStatus").textContent =
+      "Photo selected — add a question and send.";
+  }
+
+  async function sendMessage() {
+    const text = promptBox.value.trim();
+    if (!text && !selectedPhoto) return;
+
+    const photo = selectedPhoto;
+    promptBox.value = "";
+    selectedPhoto = null;
+    document.getElementById("photo").value = "";
+    document.getElementById("preview").style.display = "none";
+    document.getElementById("photoStatus").textContent = "";
+
+    addMessage((text || "What is in this photo?") +
+      (photo ? "\n📷 Photo attached" : ""), "user");
+
+    const loading = addMessage("MAG 3 PRO is thinking...", "bot");
+    const sendButton = document.getElementById("send");
+    sendButton.disabled = true;
+
+    try {
+      const form = new FormData();
+      form.append("message", text || "Describe this photo.");
+      form.append("history", JSON.stringify(conversation.slice(-12)));
+      if (photo) form.append("photo", photo);
+
+      const response = await fetch(API_ENDPOINT, {
+        method: "POST",
+        body: form
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Request failed.");
+
+      const answer = data.reply || "I couldn't generate a reply.";
+      loading.textContent = answer;
+      conversation.push(
+        {role: "user", content: text || "Describe this photo."},
+        {role: "assistant", content: answer}
+      );
+      speak(answer);
+    } catch (error) {
+      loading.textContent =
+        "The AI backend is not connected yet. We'll connect OpenRouter securely in the next step.";
+    } finally {
+      sendButton.disabled = false;
+    }
+  }
+
+  async function generateImage() {
+    const description = promptBox.value.trim();
+    if (!description) {
+      alert("First type a description of the picture you want to create.");
+      promptBox.focus();
+      return;
+    }
+    addMessage("🎨 Image request: " + description, "user");
+    addMessage("Image generation will be activated when we connect an image-generation provider.", "bot");
+    promptBox.value = "";
+  }
+</script>
+</body>
+</html>
